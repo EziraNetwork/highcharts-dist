@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0 (2018-04-13)
+ * @license Highcharts JS v6.1.0-modified (2018-06-14)
  *
  * (c) 2009-2017 Torstein Honsi
  *
@@ -70,7 +70,9 @@
 		         * a true category. However, when your data is categorized, it may be as
 		         * convenient to add each category to a separate series.
 		         *
-		         * See [the Axis object](#Axis) for programmatic access to the axis.
+		         * See [the Axis object](/class-reference/Highcharts.Axis) for
+		         * programmatic access to the axis.
+		         *
 		         * @extends {xAxis}
 		         * @excluding allowDecimals,alternateGridColor,breaks,categories,
 		         *            crosshair,dateTimeLabelFormats,lineWidth,linkedTo,maxZoom,
@@ -755,6 +757,7 @@
 		            this.dataMin = Infinity;
 		            this.dataMax = -Infinity;
 		            while (i--) {
+		                series[i].getExtremes();
 		                if (series[i].valueMin !== undefined) {
 		                    this.dataMin = Math.min(this.dataMin, series[i].valueMin);
 		                    this.dataMax = Math.max(this.dataMax, series[i].valueMax);
@@ -977,12 +980,12 @@
 		                    // Add this axis on top
 		                    colorAxisItems.push(colorAxis);
 		                }
-		            }
 
-		            // Don't add the color axis' series
-		            each(colorAxis.series, function (series) {
-		                H.erase(e.allItems, series);
-		            });
+		                // Don't add the color axis' series
+		                each(colorAxis.series, function (series) {
+		                    H.erase(e.allItems, series);
+		                });
+		            }
 		        }
 
 		        while (colorAxisItems.length) {

@@ -396,12 +396,28 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
             'colorAxis',
             'pane'
         ], function (coll) {
+            var indexMap;
+
             if (options[coll]) {
+
+                // In stock charts, the navigator series are also part of the
+                // chart.series array, but those series should not be handled
+                // here (#8196).
+                if (coll === 'series') {
+                    indexMap = [];
+                    each(chart[coll], function (s, i) {
+                        if (!s.options.isInternal) {
+                            indexMap.push(i);
+                        }
+                    });
+                }
+
+
                 each(splat(options[coll]), function (newOptions, i) {
                     var item = (
                         defined(newOptions.id) &&
                         chart.get(newOptions.id)
-                    ) || chart[coll][i];
+                    ) || chart[coll][indexMap ? indexMap[i] : i];
                     if (item && item.coll === coll) {
                         item.update(newOptions, false);
 
@@ -426,7 +442,7 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
                 // Add items for removal
                 if (oneToOne) {
                     each(chart[coll], function (item) {
-                        if (!item.touched) {
+                        if (!item.touched && !item.options.isInternal) {
                             itemsForRemoval.push(item);
                         } else {
                             delete item.touched;
@@ -470,6 +486,9 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
         } else if (pick(redraw, true)) {
             chart.redraw(animation);
         }
+
+        fireEvent(chart, 'afterUpdate', { options: options });
+
     },
 
     /**
@@ -998,7 +1017,8 @@ extend(Axis.prototype, /** @lends Highcharts.Axis.prototype */ {
      * @sample highcharts/members/axis-update/ Axis update demo
      */
     update: function (options, redraw) {
-        var chart = this.chart;
+        var chart = this.chart,
+            newEvents = (options.events || {});
 
         options = merge(this.userOptions, options);
 
@@ -1012,9 +1032,15 @@ extend(Axis.prototype, /** @lends Highcharts.Axis.prototype */ {
             ] = options;
         }
 
-        this.destroy(true);
+        // Remove old events, if no new exist (#8161)
+        objectEach(chart.options[this.coll].events, function (fn, ev) {
+            if (typeof newEvents[ev] === 'undefined') {
+                newEvents[ev] = undefined;
+            }
+        });
 
-        this.init(chart, extend(options, { events: undefined }));
+        this.destroy(true);
+        this.init(chart, extend(options, { events: newEvents }));
 
         chart.isDirtyBox = true;
         if (pick(redraw, true)) {
@@ -1079,7 +1105,7 @@ extend(Axis.prototype, /** @lends Highcharts.Axis.prototype */ {
 
     /**
      * Set new axis categories and optionally redraw.
-     * @param {Array.<String>} categories - The new categories.
+     * @param {Array<String>} categories - The new categories.
      * @param {Boolean} [redraw=true] - Whether to redraw the chart.
      * @sample highcharts/members/axis-setcategories/ Set categories by click on
      * a button

@@ -567,12 +567,12 @@ seriesType('pie', 'line', {
                         .attr(groupTranslation)
                         .add(series.group);
 
-                    if (!point.visible) {
-                        graphic.attr({ visibility: 'hidden' });
-                    }
-
                     
                 }
+
+                graphic.attr({
+                    visibility: point.visible ? 'inherit' : 'hidden'
+                });
 
                 graphic.addClass(point.getClassName());
 

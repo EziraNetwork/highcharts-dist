@@ -1,6 +1,6 @@
 @import 'https://fonts.googleapis.com/css?family=Signika:400,700';
 .highcharts-container {
-  background: url(http://www.highcharts.com/samples/graphics/sand.png);
+  background: url(https://www.highcharts.com/samples/graphics/sand.png);
 }
 
 .highcharts-boxplot-box {
@@ -39,7 +39,7 @@
   line-height: normal;
   z-index: 0;
   /* #1072 */
-  -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
   font-family: "Signika", Arial, Helvetica, sans-serif;
   font-size: 12px;
 }

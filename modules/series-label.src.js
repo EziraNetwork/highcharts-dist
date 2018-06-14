@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0 (2018-04-13)
+ * @license Highcharts JS v6.1.0-modified (2018-06-14)
  *
  * (c) 2009-2017 Torstein Honsi
  *
@@ -126,7 +126,7 @@
 		                 * An array of boxes to avoid when laying out the labels. Each
 		                 * item has a `left`, `right`, `top` and `bottom` property.
 		                 *
-		                 * @type {Array.<Object>}
+		                 * @type {Array<Object>}
 		                 */
 		                boxesToAvoid: []
 		            }
@@ -560,6 +560,12 @@
 		                y >= paneTop && y <= paneTop + paneHeight - bBox.height;
 		        }
 
+		        function destroyLabel() {
+		            if (label) {
+		                series.labelBySeries = label.destroy();
+		            }
+		        }
+
 		        if (series.visible && !series.isSeriesBoosting && points) {
 		            if (!label) {
 		                series.labelBySeries = label = chart.renderer
@@ -758,9 +764,11 @@
 
 		                }
 
-		            } else if (label) {
-		                series.labelBySeries = label.destroy();
+		            } else {
+		                destroyLabel();
 		            }
+		        } else {
+		            destroyLabel();
 		        }
 		    });
 		    // console.timeEnd('drawSeriesLabels');
