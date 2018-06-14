@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0-modified (2018-06-14)
+ * @license Highcharts JS v6.1.0-modified (2018-06-15)
  * Highstock as a plugin for Highcharts
  *
  * (c) 2017 Torstein Honsi

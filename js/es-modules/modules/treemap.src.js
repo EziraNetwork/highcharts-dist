@@ -438,7 +438,7 @@ seriesType('treemap', 'scatter', {
 // Prototype members
 }, {
     pointArrayMap: ['value'],
-    axisTypes: seriesTypes.heatmap ?
+    axisTypes: (seriesTypes && seriesTypes.heatmap) ?
         ['xAxis', 'yAxis', 'colorAxis'] :
         ['xAxis', 'yAxis'],
     directTouch: true,
@@ -447,10 +447,12 @@ seriesType('treemap', 'scatter', {
     parallelArrays: ['x', 'y', 'value', 'colorValue'],
     colorKey: 'colorValue', // Point color option key
     translateColors: (
+				seriesTypes &&
         seriesTypes.heatmap &&
         seriesTypes.heatmap.prototype.translateColors
     ),
     colorAttribs: (
+				seriesTypes &&
         seriesTypes.heatmap &&
         seriesTypes.heatmap.prototype.colorAttribs
     ),

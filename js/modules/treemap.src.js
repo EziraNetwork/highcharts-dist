@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0-modified (2018-06-14)
+ * @license Highcharts JS v6.1.0-modified (2018-06-15)
  *
  * (c) 2014 Highsoft AS
  * Authors: Jon Arild Nygard / Oystein Moseng
@@ -674,7 +674,7 @@
 		// Prototype members
 		}, {
 		    pointArrayMap: ['value'],
-		    axisTypes: seriesTypes.heatmap ?
+		    axisTypes: (seriesTypes && seriesTypes.heatmap) ?
 		        ['xAxis', 'yAxis', 'colorAxis'] :
 		        ['xAxis', 'yAxis'],
 		    directTouch: true,
@@ -683,10 +683,12 @@
 		    parallelArrays: ['x', 'y', 'value', 'colorValue'],
 		    colorKey: 'colorValue', // Point color option key
 		    translateColors: (
+						seriesTypes &&
 		        seriesTypes.heatmap &&
 		        seriesTypes.heatmap.prototype.translateColors
 		    ),
 		    colorAttribs: (
+						seriesTypes &&
 		        seriesTypes.heatmap &&
 		        seriesTypes.heatmap.prototype.colorAttribs
 		    ),

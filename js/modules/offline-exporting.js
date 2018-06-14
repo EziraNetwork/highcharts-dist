@@ -1,5 +1,5 @@
 /*
- Highcharts JS v6.1.0-modified (2018-06-14)
+ Highcharts JS v6.1.0-modified (2018-06-15)
  Client side exporting module
 
  (c) 2015 Torstein Honsi / Oystein Moseng
