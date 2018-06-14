@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0 (2018-04-13)
+ * @license Highcharts JS v6.1.0-modified (2018-06-14)
  * Exporting module
  *
  * (c) 2010-2017 Torstein Honsi
@@ -302,7 +302,7 @@
 
 		// Set up key-to-axis bindings. This is used when the Y axis is datetime or
 		// categorized. For example in an arearange series, the low and high values
-		// sholud be formatted according to the Y axis type, and in order to link them
+		// should be formatted according to the Y axis type, and in order to link them
 		// we need this map.
 		Highcharts.Chart.prototype.setUpKeyToAxis = function () {
 		    if (seriesTypes.arearange) {
@@ -322,7 +322,7 @@
 		 *            with top level headers. If a custom columnHeaderFormatter is
 		 *            defined, this can override the behavior.
 		 *
-		 * @returns {Array.<Array>}
+		 * @returns {Array<Array<Number|String>>}
 		 *          The current chart data
 		 */
 		Highcharts.Chart.prototype.getDataRows = function (multiLevelHeaders) {

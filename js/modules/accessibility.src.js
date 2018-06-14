@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0 (2018-04-13)
+ * @license Highcharts JS v6.1.0-modified (2018-06-14)
  * Accessibility module
  *
  * (c) 2010-2017 Highsoft AS
@@ -603,7 +603,7 @@
 		         * Defaults to the same format as in tooltip.
 		         *
 		         * For an overview of the replacement codes, see
-		         * [dateFormat](#Highcharts.dateFormat).
+		         * [dateFormat](/class-reference/Highcharts#dateFormat).
 		         *
 		         * @type {String}
 		         * @see [pointDateFormatter](#accessibility.pointDateFormatter)
@@ -616,7 +616,7 @@
 		         * points on datetime axes when describing them to screen reader users.
 		         * Receives one argument, `point`, referring to the point to describe.
 		         * Should return a date format string compatible with
-		         * [dateFormat](#Highcharts.dateFormat).
+		         * [dateFormat](/class-reference/Highcharts#dateFormat).
 		         *
 		         * @type {Function}
 		         * @see [pointDateFormat](#accessibility.pointDateFormat)
@@ -1185,11 +1185,7 @@
 		        return;
 		    }
 
-		    var    titleElement,
-		        exportGroupElement = doc.createElementNS(
-		            'http://www.w3.org/2000/svg',
-		            'g'
-		        ),
+		    var titleElement,
 		        descElement = chart.container.getElementsByTagName('desc')[0],
 		        textElements = chart.container.getElementsByTagName('text'),
 		        titleId = 'highcharts-title-' + chart.index,
@@ -1233,9 +1229,10 @@
 		        chart.exportSVGElements[0] &&
 		        chart.exportSVGElements[0].element
 		    ) {
-		        var oldExportCallback = chart.exportSVGElements[0].element.onclick,
-		            parent = chart.exportSVGElements[0].element.parentNode;
-		        chart.exportSVGElements[0].element.onclick = function () {
+		        // Set event handler on button
+		        var button = chart.exportSVGElements[0].element,
+		            oldExportCallback = button.onclick;
+		        button.onclick = function () {
 		            oldExportCallback.apply(
 		                this,
 		                Array.prototype.slice.call(arguments)
@@ -1243,19 +1240,23 @@
 		            chart.addAccessibleContextMenuAttribs();
 		            chart.highlightExportItem(0);
 		        };
-		        chart.exportSVGElements[0].element.setAttribute('role', 'button');
-		        chart.exportSVGElements[0].element.setAttribute(
+
+		        // Set props on button
+		        button.setAttribute('role', 'button');
+		        button.setAttribute(
 		            'aria-label',
 		            chart.langFormat(
 		                'accessibility.exporting.menuButtonLabel', { chart: chart }
 		            )
 		        );
-		        exportGroupElement.appendChild(chart.exportSVGElements[0].element);
-		        exportGroupElement.setAttribute('role', 'region');
-		        exportGroupElement.setAttribute('aria-label', chart.langFormat(
-		            'accessibility.exporting.exportRegionLabel', { chart: chart }
-		        ));
-		        parent.appendChild(exportGroupElement);
+
+		        // Set props on group
+		        chart.exportingGroup.element.setAttribute('role', 'region');
+		        chart.exportingGroup.element.setAttribute('aria-label',
+		            chart.langFormat(
+		                'accessibility.exporting.exportRegionLabel', { chart: chart }
+		            )
+		        );
 		    }
 
 		    // Set screen reader properties on input boxes for range selector. We need

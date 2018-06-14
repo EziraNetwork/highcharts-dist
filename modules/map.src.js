@@ -1,5 +1,5 @@
 /**
- * @license Highmaps JS v6.1.0 (2018-04-13)
+ * @license Highmaps JS v6.1.0-modified (2018-06-14)
  * Highmaps as a plugin for Highcharts or Highstock.
  *
  * (c) 2011-2017 Torstein Honsi
@@ -198,7 +198,9 @@
 		         * a true category. However, when your data is categorized, it may be as
 		         * convenient to add each category to a separate series.
 		         *
-		         * See [the Axis object](#Axis) for programmatic access to the axis.
+		         * See [the Axis object](/class-reference/Highcharts.Axis) for
+		         * programmatic access to the axis.
+		         *
 		         * @extends {xAxis}
 		         * @excluding allowDecimals,alternateGridColor,breaks,categories,
 		         *            crosshair,dateTimeLabelFormats,lineWidth,linkedTo,maxZoom,
@@ -903,6 +905,7 @@
 		            this.dataMin = Infinity;
 		            this.dataMax = -Infinity;
 		            while (i--) {
+		                series[i].getExtremes();
 		                if (series[i].valueMin !== undefined) {
 		                    this.dataMin = Math.min(this.dataMin, series[i].valueMin);
 		                    this.dataMax = Math.max(this.dataMax, series[i].valueMax);
@@ -1129,12 +1132,12 @@
 		                    // Add this axis on top
 		                    colorAxisItems.push(colorAxis);
 		                }
-		            }
 
-		            // Don't add the color axis' series
-		            each(colorAxis.series, function (series) {
-		                H.erase(e.allItems, series);
-		            });
+		                // Don't add the color axis' series
+		                each(colorAxis.series, function (series) {
+		                    H.erase(e.allItems, series);
+		                });
+		            }
 		        }
 
 		        while (colorAxisItems.length) {
@@ -1724,7 +1727,6 @@
 		 */
 		var colorPointMixin = H.colorPointMixin,
 		    colorSeriesMixin = H.colorSeriesMixin,
-		    doc = H.doc,
 		    each = H.each,
 		    extend = H.extend,
 		    isNumber = H.isNumber,
@@ -1739,11 +1741,6 @@
 		    seriesType = H.seriesType,
 		    seriesTypes = H.seriesTypes,
 		    splat = H.splat;
-
-		// The vector-effect attribute is not supported in IE <= 11 (at least), so we
-		// need diffent logic (#3218)
-		var supportsVectorEffect = doc.documentElement.style.vectorEffect !== undefined;
-
 
 		/**
 		 * The map series is used for basic choropleth maps, where each map area has a
@@ -2384,15 +2381,10 @@
 		        );
         
 
-		        // If vector-effect is not supported, we set the stroke-width on the
-		        // group element and let all point graphics inherit. That way we don't
-		        // have to iterate over all points to update the stroke-width on
-		        // zooming.
-		        if (supportsVectorEffect) {
-		            attr['vector-effect'] = 'non-scaling-stroke';
-		        } else {
-		            attr['stroke-width'] = 'inherit';
-		        }
+		        // Set the stroke-width on the group element and let all point graphics
+		        // inherit. That way we don't have to iterate over all points to update
+		        // the stroke-width on zooming.
+		        attr['stroke-width'] = 'inherit';
 
 		        return attr;
 		    },
@@ -2568,17 +2560,18 @@
 		        // Set the stroke-width directly on the group element so the children
 		        // inherit it. We need to use setAttribute directly, because the
 		        // stroke-widthSetter method expects a stroke color also to be set.
-		        if (!supportsVectorEffect) {
-		            series.group.element.setAttribute(
-		                'stroke-width',
+		        group.element.setAttribute(
+		            'stroke-width',
+		            (
 		                series.options[
 		                    (
 		                        series.pointAttrToOptions &&
 		                        series.pointAttrToOptions['stroke-width']
 		                    ) || 'borderWidth'
-		                ] / (scaleX || 1)
-		            );
-		        }
+		                ] ||
+		                1 // Styled mode
+		            ) / (scaleX || 1)
+		        );
 
 		        this.drawMapDataLabels();
 
@@ -3582,7 +3575,7 @@
 		                zMin = 0;
 		            }
 
-		            if (value === null) {
+		            if (!isNumber(value)) {
 		                radius = null;
 		            // Issue #4419 - if value is less than zMin, push a radius that's
 		            // always smaller than the minimum size
@@ -3756,7 +3749,7 @@
 		                series.maxPxSize = Math.max(extremes.maxSize, extremes.minSize);
 
 		                // Find the min and max Z
-		                zData = series.zData;
+		                zData = H.grep(series.zData, H.isNumber);
 		                if (zData.length) { // #1735
 		                    zMin = pick(seriesOptions.zMin, Math.min(
 		                        zMin,

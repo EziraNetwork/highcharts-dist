@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0 (2018-04-13)
+ * @license Highcharts JS v6.1.0-modified (2018-06-14)
  * Highcharts Drilldown module
  *
  * Author: Torstein Honsi
@@ -64,8 +64,8 @@
 		 *
 		 * The drilldown feature requires the drilldown.js file to be loaded,
 		 * found in the modules directory of the download package, or online at
-		 * (code.highcharts.com/modules/drilldown.js)[code.highcharts.com/modules/
-		 * drilldown.js].
+		 * [code.highcharts.com/modules/drilldown.js
+		 * ](code.highcharts.com/modules/drilldown.js).
 		 *
 		 * @type {Object}
 		 * @optionparent drilldown

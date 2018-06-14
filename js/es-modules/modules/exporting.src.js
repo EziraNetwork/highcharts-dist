@@ -300,7 +300,8 @@ defaultOptions.exporting = {
      * Function to call if the offline-exporting module fails to export
      * a chart on the client side, and [fallbackToExportServer](
      * #exporting.fallbackToExportServer) is disabled. If left undefined, an
-     * exception is thrown instead.
+     * exception is thrown instead. Receives two parameters, the exporting
+     * options, and the error from the module.
      *
      * @type {Function}
      * @see [fallbackToExportServer](#exporting.fallbackToExportServer)
@@ -311,7 +312,14 @@ defaultOptions.exporting = {
 
     /**
      * Whether or not to fall back to the export server if the offline-exporting
-     * module is unable to export the chart on the client side.
+     * module is unable to export the chart on the client side. This happens for
+     * certain browsers, and certain features (e.g.
+     * [allowHTML](#exporting.allowHTML)), depending on the image type exporting
+     * to. For very complex charts, it is possible that export can fail in
+     * browsers that don't support Blob objects, due to data URL length limits.
+     * It is recommended to define the [exporting.error](#exporting.error)
+     * handler if disabling fallback, in order to notify users in case export
+     * fails.
      *
      * @type {Boolean}
      * @default true
@@ -900,6 +908,7 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
 
         // Get the SVG from the container's innerHTML
         svg = chartCopy.getChartHTML();
+        fireEvent(this, 'getSVG', { chartCopy: chartCopy });
 
         svg = chart.sanitizeSVG(svg, options);
 
@@ -1095,8 +1104,9 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
             }, {
                 position: 'absolute',
                 zIndex: 1000,
-                padding: menuPadding + 'px'
-            }, chart.container);
+                padding: menuPadding + 'px',
+                pointerEvents: 'auto'
+            }, chart.fixedDiv || chart.container);
 
             innerMenu = createElement(
                 'div',
@@ -1278,8 +1288,7 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
             .addClass(options.className)
             .attr({
                 
-                title: pick(chart.options.lang[btnOptions._titleKey], ''),
-                zIndex: 3 // #4955
+                title: pick(chart.options.lang[btnOptions._titleKey], '')
             });
         button.menuClassName = (
             options.menuClassName ||
@@ -1307,7 +1316,7 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
             
         }
 
-        button.add()
+        button.add(chart.exportingGroup)
             .align(extend(btnOptions, {
                 width: button.width,
                 x: pick(btnOptions.x, chart.buttonOffset) // #1654
@@ -1351,6 +1360,12 @@ extend(Chart.prototype, /** @lends Highcharts.Chart.prototype */ {
                 }
             });
             exportSVGElements.length = 0;
+        }
+
+        // Destroy the exporting group
+        if (chart.exportingGroup) {
+            chart.exportingGroup.destroy();
+            delete chart.exportingGroup;
         }
 
         // Destroy the divs for the menu
@@ -1629,6 +1644,11 @@ Chart.prototype.renderExporting = function () {
     if (isDirty && exportingOptions.enabled !== false) {
         chart.exportEvents = [];
 
+        chart.exportingGroup = chart.exportingGroup ||
+            chart.renderer.g('exporting-group').attr({
+                zIndex: 3 // #4955, // #8392
+            }).add();
+
         objectEach(buttons, function (button) {
             chart.addButton(button);
         });
@@ -1640,23 +1660,19 @@ Chart.prototype.renderExporting = function () {
     addEvent(chart, 'destroy', chart.destroyExport);
 };
 
-Chart.prototype.callbacks.push(function (chart) {
-
+// Add update methods to handle chart.update and chart.exporting.update and
+// chart.navigation.update. These must be added to the chart instance rather
+// than the Chart prototype in order to use the chart instance inside the update
+// function.
+addEvent(Chart, 'init', function () {
+    var chart = this;
     function update(prop, options, redraw) {
         chart.isDirtyExporting = true;
         merge(true, chart.options[prop], options);
         if (pick(redraw, true)) {
             chart.redraw();
         }
-
     }
-
-    chart.renderExporting();
-
-    addEvent(chart, 'redraw', chart.renderExporting);
-
-    // Add update methods to handle chart.update and chart.exporting.update
-    // and chart.navigation.update.
     each(['exporting', 'navigation'], function (prop) {
         chart[prop] = {
             update: function (options, redraw) {
@@ -1664,6 +1680,14 @@ Chart.prototype.callbacks.push(function (chart) {
             }
         };
     });
+});
+
+Chart.prototype.callbacks.push(function (chart) {
+
+    chart.renderExporting();
+
+    addEvent(chart, 'redraw', chart.renderExporting);
+
 
     // Uncomment this to see a button directly below the chart, for quick
     // testing of export

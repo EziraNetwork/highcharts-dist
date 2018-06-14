@@ -1,5 +1,5 @@
 /**
- * @license  Highcharts JS v6.1.0 (2018-04-13)
+ * @license  Highcharts JS v6.1.0-modified (2018-06-14)
  *
  * Indicator series type for Highstock
  *
@@ -482,6 +482,10 @@
 		                shortEMA,
 		                longEMA,
 		                i;
+
+		            if (series.xData.length < params.longPeriod) {
+		                return false;
+		            }
 
 		            // Calculating the short and long EMA used when calculating the MACD
 		            shortEMA = EMA.prototype.getValues(series,
