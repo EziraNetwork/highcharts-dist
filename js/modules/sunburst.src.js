@@ -1361,7 +1361,9 @@
 		     * Over the alignment method by setting z index
 		     */
 		    alignDataLabel: function (point) {
-		        seriesTypes.column.prototype.alignDataLabel.apply(this, arguments);
+						if(seriesTypes && seriesTypes.column){
+							seriesTypes.column.prototype.alignDataLabel.apply(this, arguments);
+						}
 		        if (point.dataLabel) {
 		            // point.node.zIndex could be undefined (#6956)
 		            point.dataLabel.attr({ zIndex: (point.node.zIndex || 0) + 1 });
@@ -1393,8 +1395,10 @@
 		            point.group = series[groupKey];
 
 		        });
-		        // Call standard drawPoints
-		        seriesTypes.column.prototype.drawPoints.call(this);
+						// Call standard drawPoints
+						if(seriesTypes && seriesTypes.column){
+							seriesTypes.column.prototype.drawPoints.call(this);
+						}
 
         
 		        // In styled mode apply point.color. Use CSS, otherwise the fill
@@ -1617,7 +1621,7 @@
 		            });
 		        }
 		    },
-		    setVisible: seriesTypes.pie.prototype.pointClass.prototype.setVisible
+		    setVisible: seriesTypes ? seriesTypes.pie.prototype.pointClass.prototype.setVisible : undefined
 		});
 
 
