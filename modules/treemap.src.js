@@ -1648,7 +1648,7 @@
 		        }
 		    },
 		    buildKDTree: noop,
-		    drawLegendSymbol: H.LegendSymbolMixin.drawRectangle,
+		    drawLegendSymbol: H.LegendSymbolMixin ? H.LegendSymbolMixin.drawRectangle : undefined,
 		    getExtremes: function () {
 		        // Get the extremes from the value data
 		        Series.prototype.getExtremes.call(this, this.colorValueData);
