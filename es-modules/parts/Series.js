@@ -3687,4 +3687,1472 @@ H.Series = H.seriesType('line', null, { // base series options
             sharedClipKey =
                 this.sharedClipKey ||
                 [
-                 
+                    '_sharedClip',
+                    animation && animation.duration,
+                    animation && animation.easing,
+                    clipBox.height,
+                    options.xAxis,
+                    options.yAxis
+                ].join(','), // #4526
+            clipRect = chart[sharedClipKey],
+            markerClipRect = chart[sharedClipKey + 'm'];
+
+        // If a clipping rectangle with the same properties is currently present
+        // in the chart, use that.
+        if (!clipRect) {
+
+            // When animation is set, prepare the initial positions
+            if (animation) {
+                clipBox.width = 0;
+                if (inverted) {
+                    clipBox.x = chart.plotSizeX;
+                }
+
+                chart[sharedClipKey + 'm'] = markerClipRect = renderer.clipRect(
+                    // include the width of the first marker
+                    inverted ? chart.plotSizeX + 99 : -99,
+                    inverted ? -chart.plotLeft : -chart.plotTop,
+                    99,
+                    inverted ? chart.chartWidth : chart.chartHeight
+                );
+            }
+            chart[sharedClipKey] = clipRect = renderer.clipRect(clipBox);
+            // Create hashmap for series indexes
+            clipRect.count = { length: 0 };
+
+        }
+        if (animation) {
+            if (!clipRect.count[this.index]) {
+                clipRect.count[this.index] = true;
+                clipRect.count.length += 1;
+            }
+        }
+
+        if (options.clip !== false) {
+            this.group.clip(
+                animation || seriesClipBox ? clipRect : chart.clipRect
+            );
+            this.markerGroup.clip(markerClipRect);
+            this.sharedClipKey = sharedClipKey;
+        }
+
+        // Remove the shared clipping rectangle when all series are shown
+        if (!animation) {
+            if (clipRect.count[this.index]) {
+                delete clipRect.count[this.index];
+                clipRect.count.length -= 1;
+            }
+
+            if (
+                clipRect.count.length === 0 &&
+                sharedClipKey &&
+                chart[sharedClipKey]
+            ) {
+                if (!seriesClipBox) {
+                    chart[sharedClipKey] = chart[sharedClipKey].destroy();
+                }
+                if (chart[sharedClipKey + 'm']) {
+                    chart[sharedClipKey + 'm'] =
+                        chart[sharedClipKey + 'm'].destroy();
+                }
+            }
+        }
+    },
+
+    /**
+     * Animate in the series. Called internally twice. First with the `init`
+     * parameter set to true, which sets up the initial state of the animation.
+     * Then when ready, it is called with the `init` parameter undefined, in
+     * order to perform the actual animation. After the second run, the function
+     * is removed.
+     *
+     * @param  {Boolean} init
+     *         Initialize the animation.
+     */
+    animate: function (init) {
+        var series = this,
+            chart = series.chart,
+            clipRect,
+            animation = animObject(series.options.animation),
+            sharedClipKey;
+
+        // Initialize the animation. Set up the clipping rectangle.
+        if (init) {
+
+            series.setClip(animation);
+
+        // Run the animation
+        } else {
+            sharedClipKey = this.sharedClipKey;
+            clipRect = chart[sharedClipKey];
+            if (clipRect) {
+                clipRect.animate({
+                    width: chart.plotSizeX,
+                    x: 0
+                }, animation);
+            }
+            if (chart[sharedClipKey + 'm']) {
+                chart[sharedClipKey + 'm'].animate({
+                    width: chart.plotSizeX + 99,
+                    x: 0
+                }, animation);
+            }
+
+            // Delete this function to allow it only once
+            series.animate = null;
+
+        }
+    },
+
+    /**
+     * This runs after animation to land on the final plot clipping.
+     *
+     * @private
+     */
+    afterAnimate: function () {
+        this.setClip();
+        fireEvent(this, 'afterAnimate');
+        this.finishedAnimating = true;
+    },
+
+    /**
+     * Draw the markers for line-like series types, and columns or other
+     * graphical representation for {@link Point} objects for other series
+     * types. The resulting element is typically stored as {@link
+     * Point.graphic}, and is created on the first call and updated and moved on
+     * subsequent calls.
+     */
+    drawPoints: function () {
+        var series = this,
+            points = series.points,
+            chart = series.chart,
+            i,
+            point,
+            symbol,
+            graphic,
+            options = series.options,
+            seriesMarkerOptions = options.marker,
+            pointMarkerOptions,
+            hasPointMarker,
+            enabled,
+            isInside,
+            markerGroup = series[series.specialGroup] || series.markerGroup,
+            xAxis = series.xAxis,
+            markerAttribs,
+            globallyEnabled = pick(
+                seriesMarkerOptions.enabled,
+                xAxis.isRadial ? true : null,
+                // Use larger or equal as radius is null in bubbles (#6321)
+                series.closestPointRangePx >= (
+                    seriesMarkerOptions.enabledThreshold *
+                    seriesMarkerOptions.radius
+                )
+            );
+
+        if (seriesMarkerOptions.enabled !== false || series._hasPointMarkers) {
+
+            for (i = 0; i < points.length; i++) {
+                point = points[i];
+                graphic = point.graphic;
+                pointMarkerOptions = point.marker || {};
+                hasPointMarker = !!point.marker;
+                enabled = (
+                    globallyEnabled &&
+                    pointMarkerOptions.enabled === undefined
+                ) || pointMarkerOptions.enabled;
+                isInside = point.isInside;
+
+                // only draw the point if y is defined
+                if (enabled && !point.isNull) {
+
+                    // Shortcuts
+                    symbol = pick(pointMarkerOptions.symbol, series.symbol);
+
+                    markerAttribs = series.markerAttribs(
+                        point,
+                        point.selected && 'select'
+                    );
+
+                    if (graphic) { // update
+                        // Since the marker group isn't clipped, each individual
+                        // marker must be toggled
+                        graphic[isInside ? 'show' : 'hide'](true)
+                            .animate(markerAttribs);
+                    } else if (
+                        isInside &&
+                        (markerAttribs.width > 0 || point.hasImage)
+                    ) {
+
+                        /**
+                         * The graphic representation of the point. Typically
+                         * this is a simple shape, like a `rect` for column
+                         * charts or `path` for line markers, but for some
+                         * complex series types like boxplot or 3D charts, the
+                         * graphic may be a `g` element containing other shapes.
+                         * The graphic is generated the first time {@link
+                         * Series#drawPoints} runs, and updated and moved on
+                         * subsequent runs.
+                         *
+                         * @memberof Point
+                         * @name graphic
+                         * @type {SVGElement}
+                         */
+                        point.graphic = graphic = chart.renderer.symbol(
+                            symbol,
+                            markerAttribs.x,
+                            markerAttribs.y,
+                            markerAttribs.width,
+                            markerAttribs.height,
+                            hasPointMarker ?
+                                pointMarkerOptions :
+                                seriesMarkerOptions
+                        )
+                        .add(markerGroup);
+                    }
+
+                    
+                    // Presentational attributes
+                    if (graphic) {
+                        graphic.attr(
+                            series.pointAttribs(
+                                point,
+                                point.selected && 'select'
+                            )
+                        );
+                    }
+                    
+
+                    if (graphic) {
+                        graphic.addClass(point.getClassName(), true);
+                    }
+
+                } else if (graphic) {
+                    point.graphic = graphic.destroy(); // #1269
+                }
+            }
+        }
+
+    },
+
+    /**
+     * Get non-presentational attributes for a point. Used internally for both
+     * styled mode and classic. Can be overridden for different series types.
+     *
+     * @see    Series#pointAttribs
+     *
+     * @param  {Point} point
+     *         The Point to inspect.
+     * @param  {String} [state]
+     *         The state, can be either `hover`, `select` or undefined.
+     *
+     * @return {SVGAttributes}
+     *         A hash containing those attributes that are not settable from
+     *         CSS.
+     */
+    markerAttribs: function (point, state) {
+        var seriesMarkerOptions = this.options.marker,
+            seriesStateOptions,
+            pointMarkerOptions = point.marker || {},
+            symbol = pointMarkerOptions.symbol || seriesMarkerOptions.symbol,
+            pointStateOptions,
+            radius = pick(
+                pointMarkerOptions.radius,
+                seriesMarkerOptions.radius
+            ),
+            attribs;
+
+        // Handle hover and select states
+        if (state) {
+            seriesStateOptions = seriesMarkerOptions.states[state];
+            pointStateOptions = pointMarkerOptions.states &&
+                pointMarkerOptions.states[state];
+
+            radius = pick(
+                pointStateOptions && pointStateOptions.radius,
+                seriesStateOptions && seriesStateOptions.radius,
+                radius + (
+                    seriesStateOptions && seriesStateOptions.radiusPlus ||
+                    0
+                )
+            );
+        }
+
+        point.hasImage = symbol && symbol.indexOf('url') === 0;
+
+        if (point.hasImage) {
+            radius = 0; // and subsequently width and height is not set
+        }
+
+        attribs = {
+            x: Math.floor(point.plotX) - radius, // Math.floor for #1843
+            y: point.plotY - radius
+        };
+
+        if (radius) {
+            attribs.width = attribs.height = 2 * radius;
+        }
+
+        return attribs;
+
+    },
+
+    
+    /**
+     * Internal function to get presentational attributes for each point. Unlike
+     * {@link Series#markerAttribs}, this function should return those
+     * attributes that can also be set in CSS. In styled mode, `pointAttribs`
+     * won't be called.
+     *
+     * @param  {Point} point
+     *         The point instance to inspect.
+     * @param  {String} [state]
+     *         The point state, can be either `hover`, `select` or undefined for
+     *         normal state.
+     *
+     * @return {SVGAttributes}
+     *         The presentational attributes to be set on the point.
+     */
+    pointAttribs: function (point, state) {
+        var seriesMarkerOptions = this.options.marker,
+            seriesStateOptions,
+            pointOptions = point && point.options,
+            pointMarkerOptions = (pointOptions && pointOptions.marker) || {},
+            pointStateOptions,
+            color = this.color,
+            pointColorOption = pointOptions && pointOptions.color,
+            pointColor = point && point.color,
+            strokeWidth = pick(
+                pointMarkerOptions.lineWidth,
+                seriesMarkerOptions.lineWidth
+            ),
+            zoneColor = point && point.zone && point.zone.color,
+            fill,
+            stroke;
+
+        color = (
+            pointColorOption ||
+            zoneColor ||
+            pointColor ||
+            color
+        );
+        fill = (
+            pointMarkerOptions.fillColor ||
+            seriesMarkerOptions.fillColor ||
+            color
+        );
+        stroke = (
+            pointMarkerOptions.lineColor ||
+            seriesMarkerOptions.lineColor ||
+            color
+        );
+
+        // Handle hover and select states
+        if (state) {
+            seriesStateOptions = seriesMarkerOptions.states[state];
+            pointStateOptions = (
+                pointMarkerOptions.states && pointMarkerOptions.states[state]
+            ) || {};
+            strokeWidth = pick(
+                pointStateOptions.lineWidth,
+                seriesStateOptions.lineWidth,
+                strokeWidth + pick(
+                    pointStateOptions.lineWidthPlus,
+                    seriesStateOptions.lineWidthPlus,
+                    0
+                )
+            );
+            fill = (
+                pointStateOptions.fillColor ||
+                seriesStateOptions.fillColor ||
+                fill
+            );
+            stroke = (
+                pointStateOptions.lineColor ||
+                seriesStateOptions.lineColor ||
+                stroke
+            );
+        }
+
+        return {
+            'stroke': stroke,
+            'stroke-width': strokeWidth,
+            'fill': fill
+        };
+    },
+    
+    /**
+     * Clear DOM objects and free up memory.
+     *
+     * @private
+     */
+    destroy: function () {
+        var series = this,
+            chart = series.chart,
+            issue134 = /AppleWebKit\/533/.test(win.navigator.userAgent),
+            destroy,
+            i,
+            data = series.data || [],
+            point,
+            axis;
+
+        // add event hook
+        fireEvent(series, 'destroy');
+
+        // remove all events
+        removeEvent(series);
+
+        // erase from axes
+        each(series.axisTypes || [], function (AXIS) {
+            axis = series[AXIS];
+            if (axis && axis.series) {
+                erase(axis.series, series);
+                axis.isDirty = axis.forceRedraw = true;
+            }
+        });
+
+        // remove legend items
+        if (series.legendItem) {
+            series.chart.legend.destroyItem(series);
+        }
+
+        // destroy all points with their elements
+        i = data.length;
+        while (i--) {
+            point = data[i];
+            if (point && point.destroy) {
+                point.destroy();
+            }
+        }
+        series.points = null;
+
+        // Clear the animation timeout if we are destroying the series during
+        // initial animation
+        H.clearTimeout(series.animationTimeout);
+
+        // Destroy all SVGElements associated to the series
+        objectEach(series, function (val, prop) {
+            // Survive provides a hook for not destroying
+            if (val instanceof SVGElement && !val.survive) {
+
+                // issue 134 workaround
+                destroy = issue134 && prop === 'group' ?
+                'hide' :
+                'destroy';
+
+                val[destroy]();
+            }
+        });
+
+        // remove from hoverSeries
+        if (chart.hoverSeries === series) {
+            chart.hoverSeries = null;
+        }
+        erase(chart.series, series);
+        chart.orderSeries();
+
+        // clear all members
+        objectEach(series, function (val, prop) {
+            delete series[prop];
+        });
+    },
+
+    /**
+     * Get the graph path.
+     *
+     * @private
+     */
+    getGraphPath: function (points, nullsAsZeroes, connectCliffs) {
+        var series = this,
+            options = series.options,
+            step = options.step,
+            reversed,
+            graphPath = [],
+            xMap = [],
+            gap;
+
+        points = points || series.points;
+
+        // Bottom of a stack is reversed
+        reversed = points.reversed;
+        if (reversed) {
+            points.reverse();
+        }
+        // Reverse the steps (#5004)
+        step = { right: 1, center: 2 }[step] || (step && 3);
+        if (step && reversed) {
+            step = 4 - step;
+        }
+
+        // Remove invalid points, especially in spline (#5015)
+        if (options.connectNulls && !nullsAsZeroes && !connectCliffs) {
+            points = this.getValidPoints(points);
+        }
+
+        // Build the line
+        each(points, function (point, i) {
+
+            var plotX = point.plotX,
+                plotY = point.plotY,
+                lastPoint = points[i - 1],
+                pathToPoint; // the path to this point from the previous
+
+            if (
+                (point.leftCliff || (lastPoint && lastPoint.rightCliff)) &&
+                !connectCliffs
+            ) {
+                gap = true; // ... and continue
+            }
+
+            // Line series, nullsAsZeroes is not handled
+            if (point.isNull && !defined(nullsAsZeroes) && i > 0) {
+                gap = !options.connectNulls;
+
+            // Area series, nullsAsZeroes is set
+            } else if (point.isNull && !nullsAsZeroes) {
+                gap = true;
+
+            } else {
+
+                if (i === 0 || gap) {
+                    pathToPoint = ['M', point.plotX, point.plotY];
+
+                // Generate the spline as defined in the SplineSeries object
+                } else if (series.getPointSpline) {
+
+                    pathToPoint = series.getPointSpline(points, point, i);
+
+                } else if (step) {
+
+                    if (step === 1) { // right
+                        pathToPoint = [
+                            'L',
+                            lastPoint.plotX,
+                            plotY
+                        ];
+
+                    } else if (step === 2) { // center
+                        pathToPoint = [
+                            'L',
+                            (lastPoint.plotX + plotX) / 2,
+                            lastPoint.plotY,
+                            'L',
+                            (lastPoint.plotX + plotX) / 2,
+                            plotY
+                        ];
+
+                    } else {
+                        pathToPoint = [
+                            'L',
+                            plotX,
+                            lastPoint.plotY
+                        ];
+                    }
+                    pathToPoint.push('L', plotX, plotY);
+
+                } else {
+                    // normal line to next point
+                    pathToPoint = [
+                        'L',
+                        plotX,
+                        plotY
+                    ];
+                }
+
+                // Prepare for animation. When step is enabled, there are two
+                // path nodes for each x value.
+                xMap.push(point.x);
+                if (step) {
+                    xMap.push(point.x);
+                    if (step === 2) { // step = center (#8073)
+                        xMap.push(point.x);
+                    }
+                }
+
+                graphPath.push.apply(graphPath, pathToPoint);
+                gap = false;
+            }
+        });
+
+        graphPath.xMap = xMap;
+        series.graphPath = graphPath;
+
+        return graphPath;
+
+    },
+
+    /**
+     * Draw the graph. Called internally when rendering line-like series types.
+     * The first time it generates the `series.graph` item and optionally other
+     * series-wide items like `series.area` for area charts. On subsequent calls
+     * these items are updated with new positions and attributes.
+     */
+    drawGraph: function () {
+        var series = this,
+            options = this.options,
+            graphPath = (this.gappedPath || this.getGraphPath).call(this),
+            props = [[
+                'graph',
+                'highcharts-graph',
+                
+                options.lineColor || this.color,
+                options.dashStyle
+                
+            ]];
+
+        props = series.getZonesGraphs(props);
+
+        // Draw the graph
+        each(props, function (prop, i) {
+            var graphKey = prop[0],
+                graph = series[graphKey],
+                attribs;
+
+            if (graph) {
+                graph.endX = series.preventGraphAnimation ?
+                    null :
+                    graphPath.xMap;
+                graph.animate({ d: graphPath });
+
+            } else if (graphPath.length) { // #1487
+
+                series[graphKey] = series.chart.renderer.path(graphPath)
+                    .addClass(prop[1])
+                    .attr({ zIndex: 1 }) // #1069
+                    .add(series.group);
+
+                
+                attribs = {
+                    'stroke': prop[2],
+                    'stroke-width': options.lineWidth,
+                    // Polygon series use filled graph
+                    'fill': (series.fillGraph && series.color) || 'none'
+                };
+
+                if (prop[3]) {
+                    attribs.dashstyle = prop[3];
+                } else if (options.linecap !== 'square') {
+                    attribs['stroke-linecap'] = attribs['stroke-linejoin'] =
+                        'round';
+                }
+
+                graph = series[graphKey]
+                    .attr(attribs)
+                    // Add shadow to normal series (0) or to first zone (1)
+                    // #3932
+                    .shadow((i < 2) && options.shadow);
+                
+            }
+
+            // Helpers for animation
+            if (graph) {
+                graph.startX = graphPath.xMap;
+                graph.isArea = graphPath.isArea; // For arearange animation
+            }
+        });
+    },
+
+    /**
+     * Get zones properties for building graphs.
+     * Extendable by series with multiple lines within one series.
+     *
+     * @private
+     */
+    getZonesGraphs: function (props) {
+        // Add the zone properties if any
+        each(this.zones, function (zone, i) {
+            props.push([
+                'zone-graph-' + i,
+                'highcharts-graph highcharts-zone-graph-' + i + ' ' +
+                    (zone.className || ''),
+                
+                zone.color || this.color,
+                zone.dashStyle || this.options.dashStyle
+                
+            ]);
+        }, this);
+
+        return props;
+    },
+
+    /**
+     * Clip the graphs into zones for colors and styling.
+     *
+     * @private
+     */
+    applyZones: function () {
+        var series = this,
+            chart = this.chart,
+            renderer = chart.renderer,
+            zones = this.zones,
+            translatedFrom,
+            translatedTo,
+            clips = this.clips || [],
+            clipAttr,
+            graph = this.graph,
+            area = this.area,
+            chartSizeMax = Math.max(chart.chartWidth, chart.chartHeight),
+            axis = this[(this.zoneAxis || 'y') + 'Axis'],
+            extremes,
+            reversed,
+            inverted = chart.inverted,
+            horiz,
+            pxRange,
+            pxPosMin,
+            pxPosMax,
+            ignoreZones = false;
+
+        if (zones.length && (graph || area) && axis && axis.min !== undefined) {
+            reversed = axis.reversed;
+            horiz = axis.horiz;
+            // The use of the Color Threshold assumes there are no gaps
+            // so it is safe to hide the original graph and area
+            // unless it is not waterfall series, then use showLine property to
+            // set lines between columns to be visible (#7862)
+            if (graph && !this.showLine) {
+                graph.hide();
+            }
+            if (area) {
+                area.hide();
+            }
+
+            // Create the clips
+            extremes = axis.getExtremes();
+            each(zones, function (threshold, i) {
+
+                translatedFrom = reversed ?
+                    (horiz ? chart.plotWidth : 0) :
+                    (horiz ? 0 : axis.toPixels(extremes.min));
+                translatedFrom = Math.min(
+                    Math.max(
+                        pick(translatedTo, translatedFrom), 0
+                    ),
+                    chartSizeMax
+                );
+                translatedTo = Math.min(
+                    Math.max(
+                        Math.round(
+                            axis.toPixels(
+                                pick(threshold.value, extremes.max),
+                                true
+                            )
+                        ),
+                        0
+                    ),
+                    chartSizeMax
+                );
+
+                if (ignoreZones) {
+                    translatedFrom = translatedTo = axis.toPixels(extremes.max);
+                }
+
+                pxRange = Math.abs(translatedFrom - translatedTo);
+                pxPosMin = Math.min(translatedFrom, translatedTo);
+                pxPosMax = Math.max(translatedFrom, translatedTo);
+                if (axis.isXAxis) {
+                    clipAttr = {
+                        x: inverted ? pxPosMax : pxPosMin,
+                        y: 0,
+                        width: pxRange,
+                        height: chartSizeMax
+                    };
+                    if (!horiz) {
+                        clipAttr.x = chart.plotHeight - clipAttr.x;
+                    }
+                } else {
+                    clipAttr = {
+                        x: 0,
+                        y: inverted ? pxPosMax : pxPosMin,
+                        width: chartSizeMax,
+                        height: pxRange
+                    };
+                    if (horiz) {
+                        clipAttr.y = chart.plotWidth - clipAttr.y;
+                    }
+                }
+
+                
+                // VML SUPPPORT
+                if (inverted && renderer.isVML) {
+                    if (axis.isXAxis) {
+                        clipAttr = {
+                            x: 0,
+                            y: reversed ? pxPosMin : pxPosMax,
+                            height: clipAttr.width,
+                            width: chart.chartWidth
+                        };
+                    } else {
+                        clipAttr = {
+                            x: clipAttr.y - chart.plotLeft - chart.spacingBox.x,
+                            y: 0,
+                            width: clipAttr.height,
+                            height: chart.chartHeight
+                        };
+                    }
+                }
+                // END OF VML SUPPORT
+                
+
+                if (clips[i]) {
+                    clips[i].animate(clipAttr);
+                } else {
+                    clips[i] = renderer.clipRect(clipAttr);
+
+                    if (graph) {
+                        series['zone-graph-' + i].clip(clips[i]);
+                    }
+
+                    if (area) {
+                        series['zone-area-' + i].clip(clips[i]);
+                    }
+                }
+                // if this zone extends out of the axis, ignore the others
+                ignoreZones = threshold.value > extremes.max;
+
+                // Clear translatedTo for indicators
+                if (series.resetZones && translatedTo === 0) {
+                    translatedTo = undefined;
+                }
+            });
+            this.clips = clips;
+        }
+    },
+
+    /**
+     * Initialize and perform group inversion on series.group and
+     * series.markerGroup.
+     *
+     * @private
+     */
+    invertGroups: function (inverted) {
+        var series = this,
+            chart = series.chart,
+            remover;
+
+        function setInvert() {
+            each(['group', 'markerGroup'], function (groupName) {
+                if (series[groupName]) {
+
+                    // VML/HTML needs explicit attributes for flipping
+                    if (chart.renderer.isVML) {
+                        series[groupName].attr({
+                            width: series.yAxis.len,
+                            height: series.xAxis.len
+                        });
+                    }
+
+                    series[groupName].width = series.yAxis.len;
+                    series[groupName].height = series.xAxis.len;
+                    series[groupName].invert(inverted);
+                }
+            });
+        }
+
+        // Pie, go away (#1736)
+        if (!series.xAxis) {
+            return;
+        }
+
+        // A fixed size is needed for inversion to work
+        remover = addEvent(chart, 'resize', setInvert);
+        addEvent(series, 'destroy', remover);
+
+        // Do it now
+        setInvert(inverted); // do it now
+
+        // On subsequent render and redraw, just do setInvert without setting up
+        // events again
+        series.invertGroups = setInvert;
+    },
+
+    /**
+     * General abstraction for creating plot groups like series.group,
+     * series.dataLabelsGroup and series.markerGroup. On subsequent calls, the
+     * group will only be adjusted to the updated plot size.
+     *
+     * @private
+     */
+    plotGroup: function (prop, name, visibility, zIndex, parent) {
+        var group = this[prop],
+            isNew = !group;
+
+        // Generate it on first call
+        if (isNew) {
+            this[prop] = group = this.chart.renderer.g()
+                .attr({
+                    zIndex: zIndex || 0.1 // IE8 and pointer logic use this
+                })
+                .add(parent);
+
+        }
+
+        // Add the class names, and replace existing ones as response to
+        // Series.update (#6660)
+        group.addClass(
+            (
+                'highcharts-' + name +
+                ' highcharts-series-' + this.index +
+                ' highcharts-' + this.type + '-series ' +
+                (
+                    defined(this.colorIndex) ?
+                        'highcharts-color-' + this.colorIndex + ' ' :
+                        ''
+                ) +
+                (this.options.className || '') +
+                (
+                    group.hasClass('highcharts-tracker') ?
+                        ' highcharts-tracker' :
+                        ''
+                )
+            ),
+            true
+        );
+
+        // Place it on first and subsequent (redraw) calls
+        group.attr({ visibility: visibility })[isNew ? 'attr' : 'animate'](
+            this.getPlotBox()
+        );
+        return group;
+    },
+
+    /**
+     * Get the translation and scale for the plot area of this series.
+     */
+    getPlotBox: function () {
+        var chart = this.chart,
+            xAxis = this.xAxis,
+            yAxis = this.yAxis;
+
+        // Swap axes for inverted (#2339)
+        if (chart.inverted) {
+            xAxis = yAxis;
+            yAxis = this.xAxis;
+        }
+        return {
+            translateX: xAxis ? xAxis.left : chart.plotLeft,
+            translateY: yAxis ? yAxis.top : chart.plotTop,
+            scaleX: 1, // #1623
+            scaleY: 1
+        };
+    },
+
+    /**
+     * Render the graph and markers. Called internally when first rendering and
+     * later when redrawing the chart. This function can be extended in plugins,
+     * but normally shouldn't be called directly.
+     */
+    render: function () {
+        var series = this,
+            chart = series.chart,
+            group,
+            options = series.options,
+            // Animation doesn't work in IE8 quirks when the group div is
+            // hidden, and looks bad in other oldIE
+            animDuration = (
+                !!series.animate &&
+                chart.renderer.isSVG &&
+                animObject(options.animation).duration
+            ),
+            visibility = series.visible ? 'inherit' : 'hidden', // #2597
+            zIndex = options.zIndex,
+            hasRendered = series.hasRendered,
+            chartSeriesGroup = chart.seriesGroup,
+            inverted = chart.inverted;
+
+        // the group
+        group = series.plotGroup(
+            'group',
+            'series',
+            visibility,
+            zIndex,
+            chartSeriesGroup
+        );
+
+        series.markerGroup = series.plotGroup(
+            'markerGroup',
+            'markers',
+            visibility,
+            zIndex,
+            chartSeriesGroup
+        );
+
+        // initiate the animation
+        if (animDuration) {
+            series.animate(true);
+        }
+
+        // SVGRenderer needs to know this before drawing elements (#1089, #1795)
+        group.inverted = series.isCartesian ? inverted : false;
+
+        // draw the graph if any
+        if (series.drawGraph) {
+            series.drawGraph();
+            series.applyZones();
+        }
+
+/*        each(series.points, function (point) {
+            if (point.redraw) {
+                point.redraw();
+            }
+        });*/
+
+        // draw the data labels (inn pies they go before the points)
+        if (series.drawDataLabels) {
+            series.drawDataLabels();
+        }
+
+        // draw the points
+        if (series.visible) {
+            series.drawPoints();
+        }
+
+
+        // draw the mouse tracking area
+        if (
+            series.drawTracker &&
+            series.options.enableMouseTracking !== false
+        ) {
+            series.drawTracker();
+        }
+
+        // Handle inverted series and tracker groups
+        series.invertGroups(inverted);
+
+        // Initial clipping, must be defined after inverting groups for VML.
+        // Applies to columns etc. (#3839).
+        if (options.clip !== false && !series.sharedClipKey && !hasRendered) {
+            group.clip(chart.clipRect);
+        }
+
+        // Run the animation
+        if (animDuration) {
+            series.animate();
+        }
+
+        // Call the afterAnimate function on animation complete (but don't
+        // overwrite the animation.complete option which should be available to
+        // the user).
+        if (!hasRendered) {
+            series.animationTimeout = syncTimeout(function () {
+                series.afterAnimate();
+            }, animDuration);
+        }
+
+        series.isDirty = false; // means data is in accordance with what you see
+        // (See #322) series.isDirty = series.isDirtyData = false; // means
+        // data is in accordance with what you see
+        series.hasRendered = true;
+
+        fireEvent(series, 'afterRender');
+    },
+
+    /**
+     * Redraw the series. This function is called internally from `chart.redraw`
+     * and normally shouldn't be called directly.
+     *
+     * @private
+     */
+    redraw: function () {
+        var series = this,
+            chart = series.chart,
+            // cache it here as it is set to false in render, but used after
+            wasDirty = series.isDirty || series.isDirtyData,
+            group = series.group,
+            xAxis = series.xAxis,
+            yAxis = series.yAxis;
+
+        // reposition on resize
+        if (group) {
+            if (chart.inverted) {
+                group.attr({
+                    width: chart.plotWidth,
+                    height: chart.plotHeight
+                });
+            }
+
+            group.animate({
+                translateX: pick(xAxis && xAxis.left, chart.plotLeft),
+                translateY: pick(yAxis && yAxis.top, chart.plotTop)
+            });
+        }
+
+        series.translate();
+        series.render();
+        if (wasDirty) { // #3868, #3945
+            delete this.kdTree;
+        }
+    },
+
+    kdAxisArray: ['clientX', 'plotY'],
+
+    searchPoint: function (e, compareX) {
+        var series = this,
+            xAxis = series.xAxis,
+            yAxis = series.yAxis,
+            inverted = series.chart.inverted;
+
+        return this.searchKDTree({
+            clientX: inverted ?
+                xAxis.len - e.chartY + xAxis.pos :
+                e.chartX - xAxis.pos,
+            plotY: inverted ?
+                yAxis.len - e.chartX + yAxis.pos :
+                e.chartY - yAxis.pos
+        }, compareX);
+    },
+
+    /**
+     * Build the k-d-tree that is used by mouse and touch interaction to get the
+     * closest point. Line-like series typically have a one-dimensional tree
+     * where points are searched along the X axis, while scatter-like series
+     * typically search in two dimensions, X and Y.
+     *
+     * @private
+     */
+    buildKDTree: function () {
+
+        // Prevent multiple k-d-trees from being built simultaneously (#6235)
+        this.buildingKdTree = true;
+
+        var series = this,
+            dimensions = series.options.findNearestPointBy.indexOf('y') > -1 ?
+                            2 : 1;
+
+        // Internal function
+        function _kdtree(points, depth, dimensions) {
+            var axis,
+                median,
+                length = points && points.length;
+
+            if (length) {
+
+                // alternate between the axis
+                axis = series.kdAxisArray[depth % dimensions];
+
+                // sort point array
+                points.sort(function (a, b) {
+                    return a[axis] - b[axis];
+                });
+
+                median = Math.floor(length / 2);
+
+                // build and return nod
+                return {
+                    point: points[median],
+                    left: _kdtree(
+                        points.slice(0, median), depth + 1, dimensions
+                    ),
+                    right: _kdtree(
+                        points.slice(median + 1), depth + 1, dimensions
+                    )
+                };
+
+            }
+        }
+
+        // Start the recursive build process with a clone of the points array
+        // and null points filtered out (#3873)
+        function startRecursive() {
+            series.kdTree = _kdtree(
+                series.getValidPoints(
+                    null,
+                    // For line-type series restrict to plot area, but
+                    // column-type series not (#3916, #4511)
+                    !series.directTouch
+                ),
+                dimensions,
+                dimensions
+            );
+            series.buildingKdTree = false;
+        }
+        delete series.kdTree;
+
+        // For testing tooltips, don't build async
+        syncTimeout(startRecursive, series.options.kdNow ? 0 : 1);
+    },
+
+    searchKDTree: function (point, compareX) {
+        var series = this,
+            kdX = this.kdAxisArray[0],
+            kdY = this.kdAxisArray[1],
+            kdComparer = compareX ? 'distX' : 'dist',
+            kdDimensions = series.options.findNearestPointBy.indexOf('y') > -1 ?
+                            2 : 1;
+
+        // Set the one and two dimensional distance on the point object
+        function setDistance(p1, p2) {
+            var x = (defined(p1[kdX]) && defined(p2[kdX])) ?
+                    Math.pow(p1[kdX] - p2[kdX], 2) :
+                    null,
+                y = (defined(p1[kdY]) && defined(p2[kdY])) ?
+                    Math.pow(p1[kdY] - p2[kdY], 2) :
+                    null,
+                r = (x || 0) + (y || 0);
+
+            p2.dist = defined(r) ? Math.sqrt(r) : Number.MAX_VALUE;
+            p2.distX = defined(x) ? Math.sqrt(x) : Number.MAX_VALUE;
+        }
+        function _search(search, tree, depth, dimensions) {
+            var point = tree.point,
+                axis = series.kdAxisArray[depth % dimensions],
+                tdist,
+                sideA,
+                sideB,
+                ret = point,
+                nPoint1,
+                nPoint2;
+
+            setDistance(search, point);
+
+            // Pick side based on distance to splitting point
+            tdist = search[axis] - point[axis];
+            sideA = tdist < 0 ? 'left' : 'right';
+            sideB = tdist < 0 ? 'right' : 'left';
+
+            // End of tree
+            if (tree[sideA]) {
+                nPoint1 = _search(search, tree[sideA], depth + 1, dimensions);
+
+                ret = (nPoint1[kdComparer] < ret[kdComparer] ? nPoint1 : point);
+            }
+            if (tree[sideB]) {
+                // compare distance to current best to splitting point to decide
+                // wether to check side B or not
+                if (Math.sqrt(tdist * tdist) < ret[kdComparer]) {
+                    nPoint2 = _search(
+                        search,
+                        tree[sideB],
+                        depth + 1,
+                        dimensions
+                    );
+                    ret = nPoint2[kdComparer] < ret[kdComparer] ?
+                        nPoint2 :
+                        ret;
+                }
+            }
+
+            return ret;
+        }
+
+        if (!this.kdTree && !this.buildingKdTree) {
+            this.buildKDTree();
+        }
+
+        if (this.kdTree) {
+            return _search(point, this.kdTree, kdDimensions, kdDimensions);
+        }
+    }
+
+}); // end Series prototype
+
+/**
+ * A line series displays information as a series of data points connected by
+ * straight line segments.
+ *
+ * @sample {highcharts} highcharts/demo/line-basic/ Line chart
+ * @sample {highstock} stock/demo/basic-line/ Line chart
+ *
+ * @extends plotOptions.series
+ * @product highcharts highstock
+ * @apioption plotOptions.line
+ */
+
+/**
+ * A `line` series. If the [type](#series.line.type) option is not
+ * specified, it is inherited from [chart.type](#chart.type).
+ *
+ * @type {Object}
+ * @extends series,plotOptions.line
+ * @excluding dataParser,dataURL
+ * @product highcharts highstock
+ * @apioption series.line
+ */
+
+/**
+ * An array of data points for the series. For the `line` series type,
+ * points can be given in the following ways:
+ *
+ * 1.  An array of numerical values. In this case, the numerical values
+ * will be interpreted as `y` options. The `x` values will be automatically
+ * calculated, either starting at 0 and incremented by 1, or from `pointStart`
+ * and `pointInterval` given in the series options. If the axis has
+ * categories, these will be used. Example:
+ *
+ *  ```js
+ *  data: [0, 5, 3, 5]
+ *  ```
+ *
+ * 2.  An array of arrays with 2 values. In this case, the values correspond
+ * to `x,y`. If the first value is a string, it is applied as the name
+ * of the point, and the `x` value is inferred.
+ *
+ *  ```js
+ *     data: [
+ *         [0, 1],
+ *         [1, 2],
+ *         [2, 8]
+ *     ]
+ *  ```
+ *
+ * 3.  An array of objects with named values. The objects are point
+ * configuration objects as seen below. If the total number of data
+ * points exceeds the series' [turboThreshold](#series.line.turboThreshold),
+ * this option is not available.
+ *
+ *  ```js
+ *     data: [{
+ *         x: 1,
+ *         y: 9,
+ *         name: "Point2",
+ *         color: "#00FF00"
+ *     }, {
+ *         x: 1,
+ *         y: 6,
+ *         name: "Point1",
+ *         color: "#FF00FF"
+ *     }]
+ *  ```
+ *
+ * @type {Array<Object|Array|Number>}
+ * @sample {highcharts} highcharts/chart/reflow-true/
+ *         Numerical values
+ * @sample {highcharts} highcharts/series/data-array-of-arrays/
+ *         Arrays of numeric x and y
+ * @sample {highcharts} highcharts/series/data-array-of-arrays-datetime/
+ *         Arrays of datetime x and y
+ * @sample {highcharts} highcharts/series/data-array-of-name-value/
+ *         Arrays of point.name and y
+ * @sample {highcharts} highcharts/series/data-array-of-objects/
+ *         Config objects
+ * @apioption series.line.data
+ */
+
+/**
+ * An additional, individual class name for the data point's graphic
+ * representation.
+ *
+ * @type {String}
+ * @since 5.0.0
+ * @product highcharts
+ * @apioption series.line.data.className
+ */
+
+/**
+ * Individual color for the point. By default the color is pulled from
+ * the global `colors` array.
+ *
+ * In styled mode, the `color` option doesn't take effect. Instead, use
+ * `colorIndex`.
+ *
+ * @type {Color}
+ * @sample {highcharts} highcharts/point/color/ Mark the highest point
+ * @default undefined
+ * @product highcharts highstock
+ * @apioption series.line.data.color
+ */
+
+/**
+ * A specific color index to use for the point, so its graphic representations
+ * are given the class name `highcharts-color-{n}`. In styled mode this will
+ * change the color of the graphic. In non-styled mode, the color by is set by
+ * the `fill` attribute, so the change in class name won't have a visual effect
+ * by default.
+ *
+ * @type {Number}
+ * @since 5.0.0
+ * @product highcharts
+ * @apioption series.line.data.colorIndex
+ */
+
+/**
+ * Individual data label for each point. The options are the same as
+ * the ones for [plotOptions.series.dataLabels](
+ * #plotOptions.series.dataLabels).
+ *
+ * @type {Object}
+ * @sample highcharts/point/datalabels/
+ *         Show a label for the last value
+ * @product highcharts highstock
+ * @apioption series.line.data.dataLabels
+ */
+
+/**
+ * A description of the point to add to the screen reader information
+ * about the point. Requires the Accessibility module.
+ *
+ * @type {String}
+ * @default undefined
+ * @since 5.0.0
+ * @apioption series.line.data.description
+ */
+
+/**
+ * An id for the point. This can be used after render time to get a
+ * pointer to the point object through `chart.get()`.
+ *
+ * @type {String}
+ * @sample {highcharts} highcharts/point/id/ Remove an id'd point
+ * @default null
+ * @since 1.2.0
+ * @product highcharts highstock
+ * @apioption series.line.data.id
+ */
+
+/**
+ * The rank for this point's data label in case of collision. If two
+ * data labels are about to overlap, only the one with the highest `labelrank`
+ * will be drawn.
+ *
+ * @type {Number}
+ * @apioption series.line.data.labelrank
+ */
+
+/**
+ * The name of the point as shown in the legend, tooltip, dataLabel
+ * etc.
+ *
+ * @type {String}
+ * @sample {highcharts} highcharts/series/data-array-of-objects/ Point names
+ * @see [xAxis.uniqueNames](#xAxis.uniqueNames)
+ * @apioption series.line.data.name
+ */
+
+/**
+ * Whether the data point is selected initially.
+ *
+ * @type {Boolean}
+ * @default false
+ * @product highcharts highstock
+ * @apioption series.line.data.selected
+ */
+
+/**
+ * The x value of the point. For datetime axes, the X value is the timestamp
+ * in milliseconds since 1970.
+ *
+ * @type {Number}
+ * @product highcharts highstock
+ * @apioption series.line.data.x
+ */
+
+/**
+ * The y value of the point.
+ *
+ * @type {Number}
+ * @default null
+ * @product highcharts highstock
+ * @apioption series.line.data.y
+ */
+
+/**
+ * Individual point events
+ *
+ * @extends plotOptions.series.point.events
+ * @product highcharts highstock
+ * @apioption series.line.data.events
+ */
+
+/**
+ * @extends plotOptions.series.marker
+ * @product highcharts highstock
+ * @apioption series.line.data.marker
+ */

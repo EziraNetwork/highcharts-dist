@@ -4086,4 +4086,262 @@
 
 
 		wrap(seriesTypes.pie.prototype, 'drawPoints', function (proceed) {
-		    proceed.apply(this, [].slice.call(argu
+		    proceed.apply(this, [].slice.call(arguments, 1));
+
+		    if (this.chart.is3d()) {
+		        each(this.points, function (point) {
+		            var graphic = point.graphic;
+
+		            // #4584 Check if has graphic - null points don't have it
+		            if (graphic) {
+		                // Hide null or 0 points (#3006, 3650)
+		                graphic[point.y && point.visible ? 'show' : 'hide']();
+		            }
+		        });
+		    }
+		});
+
+		wrap(seriesTypes.pie.prototype, 'drawDataLabels', function (proceed) {
+		    if (this.chart.is3d()) {
+		        var series = this,
+		            chart = series.chart,
+		            options3d = chart.options.chart.options3d;
+		        each(series.data, function (point) {
+		            var shapeArgs = point.shapeArgs,
+		                r = shapeArgs.r,
+		                // #3240 issue with datalabels for 0 and null values
+		                a1 = (shapeArgs.alpha || options3d.alpha) * deg2rad,
+		                b1 = (shapeArgs.beta || options3d.beta) * deg2rad,
+		                a2 = (shapeArgs.start + shapeArgs.end) / 2,
+		                labelPos = point.labelPos,
+		                labelIndexes = [0, 2, 4], // [x1, y1, x2, y2, x3, y3]
+		                yOffset = (-r * (1 - Math.cos(a1)) * Math.sin(a2)),
+		                xOffset = r * (Math.cos(b1) - 1) * Math.cos(a2);
+
+		            // Apply perspective on label positions
+		            each(labelIndexes, function (index) {
+		                labelPos[index] += xOffset;
+		                labelPos[index + 1] += yOffset;
+		            });
+		        });
+		    }
+
+		    proceed.apply(this, [].slice.call(arguments, 1));
+		});
+
+		wrap(seriesTypes.pie.prototype, 'addPoint', function (proceed) {
+		    proceed.apply(this, [].slice.call(arguments, 1));
+		    if (this.chart.is3d()) {
+		        // destroy (and rebuild) everything!!!
+		        this.update(this.userOptions, true); // #3845 pass the old options
+		    }
+		});
+
+		wrap(seriesTypes.pie.prototype, 'animate', function (proceed) {
+		    if (!this.chart.is3d()) {
+		        proceed.apply(this, [].slice.call(arguments, 1));
+		    } else {
+		        var args = arguments,
+		            init = args[1],
+		            animation = this.options.animation,
+		            attribs,
+		            center = this.center,
+		            group = this.group,
+		            markerGroup = this.markerGroup;
+
+		        if (svg) { // VML is too slow anyway
+
+		            if (animation === true) {
+		                animation = {};
+		            }
+		            // Initialize the animation
+		            if (init) {
+
+		                // Scale down the group and place it in the center
+		                group.oldtranslateX = group.translateX;
+		                group.oldtranslateY = group.translateY;
+		                attribs = {
+		                    translateX: center[0],
+		                    translateY: center[1],
+		                    scaleX: 0.001, // #1499
+		                    scaleY: 0.001
+		                };
+
+		                group.attr(attribs);
+		                if (markerGroup) {
+		                    markerGroup.attrSetters = group.attrSetters;
+		                    markerGroup.attr(attribs);
+		                }
+
+		            // Run the animation
+		            } else {
+		                attribs = {
+		                    translateX: group.oldtranslateX,
+		                    translateY: group.oldtranslateY,
+		                    scaleX: 1,
+		                    scaleY: 1
+		                };
+		                group.animate(attribs, animation);
+
+		                if (markerGroup) {
+		                    markerGroup.animate(attribs, animation);
+		                }
+
+		                // Delete this function to allow it only once
+		                this.animate = null;
+		            }
+
+		        }
+		    }
+		});
+
+	}(Highcharts));
+	(function (H) {
+		/**
+		 * (c) 2010-2017 Torstein Honsi
+		 *
+		 * Scatter 3D series.
+		 *
+		 * License: www.highcharts.com/license
+		 */
+		var Point = H.Point,
+		    seriesType = H.seriesType,
+		    seriesTypes = H.seriesTypes;
+
+		/**
+		 * A 3D scatter plot uses x, y and z coordinates to display values for three
+		 * variables for a set of data.
+		 *
+		 * @sample {highcharts} highcharts/3d/scatter/
+		 *         Simple 3D scatter
+		 * @sample {highcharts} highcharts/demo/3d-scatter-draggable
+		 *         Draggable 3d scatter
+		 *
+		 * @extends {plotOptions.scatter}
+		 * @product highcharts
+		 * @optionparent plotOptions.scatter3d
+		 */
+		seriesType('scatter3d', 'scatter', {
+		    tooltip: {
+		        pointFormat: 'x: <b>{point.x}</b><br/>y: <b>{point.y}</b><br/>z: <b>{point.z}</b><br/>'
+		    }
+
+		// Series class
+		}, {
+		    pointAttribs: function (point) {
+		        var attribs = seriesTypes.scatter.prototype.pointAttribs
+		            .apply(this, arguments);
+
+		        if (this.chart.is3d() && point) {
+		            attribs.zIndex = H.pointCameraDistance(point, this.chart);
+		        }
+
+		        return attribs;
+		    },
+		    axisTypes: ['xAxis', 'yAxis', 'zAxis'],
+		    pointArrayMap: ['x', 'y', 'z'],
+		    parallelArrays: ['x', 'y', 'z'],
+
+		    // Require direct touch rather than using the k-d-tree, because the k-d-tree
+		    // currently doesn't take the xyz coordinate system into account (#4552)
+		    directTouch: true
+
+		// Point class
+		}, {
+		    applyOptions: function () {
+		        Point.prototype.applyOptions.apply(this, arguments);
+		        if (this.z === undefined) {
+		            this.z = 0;
+		        }
+
+		        return this;
+		    }
+
+		});
+
+
+		/**
+		 * A `scatter3d` series. If the [type](#series.scatter3d.type) option is
+		 * not specified, it is inherited from [chart.type](#chart.type).
+		 *
+		 * scatter3d](#plotOptions.scatter3d).
+		 *
+		 * @type {Object}
+		 * @extends series,plotOptions.scatter3d
+		 * @product highcharts
+		 * @apioption series.scatter3d
+		 */
+
+		/**
+		 * An array of data points for the series. For the `scatter3d` series
+		 * type, points can be given in the following ways:
+		 *
+		 * 1.  An array of arrays with 3 values. In this case, the values correspond
+		 * to `x,y,z`. If the first value is a string, it is applied as the name
+		 * of the point, and the `x` value is inferred.
+		 *
+		 *  ```js
+		 *     data: [
+		 *         [0, 0, 1],
+		 *         [1, 8, 7],
+		 *         [2, 9, 2]
+		 *     ]
+		 *  ```
+		 *
+		 * 3.  An array of objects with named values. The objects are point
+		 * configuration objects as seen below. If the total number of data
+		 * points exceeds the series'
+		 * [turboThreshold](#series.scatter3d.turboThreshold), this option is not
+		 * available.
+		 *
+		 *  ```js
+		 *     data: [{
+		 *         x: 1,
+		 *         y: 2,
+		 *         z: 24,
+		 *         name: "Point2",
+		 *         color: "#00FF00"
+		 *     }, {
+		 *         x: 1,
+		 *         y: 4,
+		 *         z: 12,
+		 *         name: "Point1",
+		 *         color: "#FF00FF"
+		 *     }]
+		 *  ```
+		 *
+		 * @type {Array<Object|Array>}
+		 * @extends series.scatter.data
+		 * @sample {highcharts} highcharts/chart/reflow-true/
+		 *         Numerical values
+		 * @sample {highcharts} highcharts/series/data-array-of-arrays/
+		 *         Arrays of numeric x and y
+		 * @sample {highcharts} highcharts/series/data-array-of-arrays-datetime/
+		 *         Arrays of datetime x and y
+		 * @sample {highcharts} highcharts/series/data-array-of-name-value/
+		 *         Arrays of point.name and y
+		 * @sample {highcharts} highcharts/series/data-array-of-objects/
+		 *         Config objects
+		 * @product highcharts
+		 * @apioption series.scatter3d.data
+		 */
+
+		/**
+		 * The z value for each data point.
+		 *
+		 * @type {Number}
+		 * @product highcharts
+		 * @apioption series.scatter3d.data.z
+		 */
+
+	}(Highcharts));
+	(function (H) {
+		/**
+		 * (c) 2010-2017 Torstein Honsi
+		 *
+		 * License: www.highcharts.com/license
+		 */
+
+
+	}(Highcharts));
+}));

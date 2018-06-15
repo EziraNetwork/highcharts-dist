@@ -3775,4 +3775,389 @@ extend(SVGRenderer.prototype, /** @lends Highcharts.SVGRenderer.prototype */ {
      *         `rect`. Other possible values are `callout` or other shapes
      *         defined in {@link Highcharts.SVGRenderer#symbols}.
      * @param  {number} anchorX
-     *         In case the `shape` has a pointer, like
+     *         In case the `shape` has a pointer, like a flag, this is the
+     *         coordinates it should be pinned to.
+     * @param  {number} anchorY
+     *         In case the `shape` has a pointer, like a flag, this is the
+     *         coordinates it should be pinned to.
+     * @param  {Boolean} baseline
+     *         Whether to position the label relative to the text baseline,
+     *         like {@link Highcharts.SVGRenderer#text|renderer.text}, or to the
+     *         upper border of the rectangle.
+     * @param  {String} className
+     *         Class name for the group.
+     *
+     * @return {SVGElement}
+     *         The generated label.
+     *
+     * @sample highcharts/members/renderer-label-on-chart/
+     *         A label on the chart
+     */
+    label: function (
+        str,
+        x,
+        y,
+        shape,
+        anchorX,
+        anchorY,
+        useHTML,
+        baseline,
+        className
+    ) {
+
+        var renderer = this,
+            wrapper = renderer.g(className !== 'button' && 'label'),
+            text = wrapper.text = renderer.text('', 0, 0, useHTML)
+                .attr({
+                    zIndex: 1
+                }),
+            box,
+            bBox,
+            alignFactor = 0,
+            padding = 3,
+            paddingLeft = 0,
+            width,
+            height,
+            wrapperX,
+            wrapperY,
+            textAlign,
+            deferredAttr = {},
+            strokeWidth,
+            baselineOffset,
+            hasBGImage = /^url\((.*?)\)$/.test(shape),
+            needsBox = hasBGImage,
+            getCrispAdjust,
+            updateBoxSize,
+            updateTextPadding,
+            boxAttr;
+
+        if (className) {
+            wrapper.addClass('highcharts-' + className);
+        }
+
+        
+        needsBox = hasBGImage;
+        getCrispAdjust = function () {
+            return (strokeWidth || 0) % 2 / 2;
+        };
+
+        
+
+        /**
+         * This function runs after the label is added to the DOM (when the
+         * bounding box is available), and after the text of the label is
+         * updated to detect the new bounding box and reflect it in the border
+         * box.
+         */
+        updateBoxSize = function () {
+            var style = text.element.style,
+                crispAdjust,
+                attribs = {};
+
+            bBox = (
+                (width === undefined || height === undefined || textAlign) &&
+                defined(text.textStr) &&
+                text.getBBox()
+            ); // #3295 && 3514 box failure when string equals 0
+
+            wrapper.width = (
+                (width || bBox.width || 0) +
+                2 * padding +
+                paddingLeft
+            );
+            wrapper.height = (height || bBox.height || 0) + 2 * padding;
+
+            // Update the label-scoped y offset
+            baselineOffset = padding +
+                renderer.fontMetrics(style && style.fontSize, text).b;
+
+            if (needsBox) {
+
+                // Create the border box if it is not already present
+                if (!box) {
+                    // Symbol definition exists (#5324)
+                    wrapper.box = box = renderer.symbols[shape] || hasBGImage ?
+                        renderer.symbol(shape) :
+                        renderer.rect();
+
+                    box.addClass( // Don't use label className for buttons
+                        (className === 'button' ? '' : 'highcharts-label-box') +
+                        (className ? ' highcharts-' + className + '-box' : '')
+                    );
+
+                    box.add(wrapper);
+
+                    crispAdjust = getCrispAdjust();
+                    attribs.x = crispAdjust;
+                    attribs.y = (baseline ? -baselineOffset : 0) + crispAdjust;
+                }
+
+                // Apply the box attributes
+                attribs.width = Math.round(wrapper.width);
+                attribs.height = Math.round(wrapper.height);
+
+                box.attr(extend(attribs, deferredAttr));
+                deferredAttr = {};
+            }
+        };
+
+        /**
+         * This function runs after setting text or padding, but only if padding
+         * is changed
+         */
+        updateTextPadding = function () {
+            var textX = paddingLeft + padding,
+                textY;
+
+            // determin y based on the baseline
+            textY = baseline ? 0 : baselineOffset;
+
+            // compensate for alignment
+            if (
+                defined(width) &&
+                bBox &&
+                (textAlign === 'center' || textAlign === 'right')
+            ) {
+                textX += { center: 0.5, right: 1 }[textAlign] *
+                    (width - bBox.width);
+            }
+
+            // update if anything changed
+            if (textX !== text.x || textY !== text.y) {
+                text.attr('x', textX);
+                // #8159 - prevent misplaced data labels in treemap
+                // (useHTML: true)
+                if (text.hasBoxWidthChanged) {
+                    bBox = text.getBBox(true);
+                    updateBoxSize();
+                }
+                if (textY !== undefined) {
+                    text.attr('y', textY);
+                }
+            }
+
+            // record current values
+            text.x = textX;
+            text.y = textY;
+        };
+
+        /**
+         * Set a box attribute, or defer it if the box is not yet created
+         * @param {Object} key
+         * @param {Object} value
+         */
+        boxAttr = function (key, value) {
+            if (box) {
+                box.attr(key, value);
+            } else {
+                deferredAttr[key] = value;
+            }
+        };
+
+        /**
+         * After the text element is added, get the desired size of the border
+         * box and add it before the text in the DOM.
+         */
+        wrapper.onAdd = function () {
+            text.add(wrapper);
+            wrapper.attr({
+                // Alignment is available now  (#3295, 0 not rendered if given
+                // as a value)
+                text: (str || str === 0) ? str : '',
+                x: x,
+                y: y
+            });
+
+            if (box && defined(anchorX)) {
+                wrapper.attr({
+                    anchorX: anchorX,
+                    anchorY: anchorY
+                });
+            }
+        };
+
+        /*
+         * Add specific attribute setters.
+         */
+
+        // only change local variables
+        wrapper.widthSetter = function (value) {
+            width = H.isNumber(value) ? value : null; // width:auto => null
+        };
+        wrapper.heightSetter = function (value) {
+            height = value;
+        };
+        wrapper['text-alignSetter'] = function (value) {
+            textAlign = value;
+        };
+        wrapper.paddingSetter =  function (value) {
+            if (defined(value) && value !== padding) {
+                padding = wrapper.padding = value;
+                updateTextPadding();
+            }
+        };
+        wrapper.paddingLeftSetter =  function (value) {
+            if (defined(value) && value !== paddingLeft) {
+                paddingLeft = value;
+                updateTextPadding();
+            }
+        };
+
+
+        // change local variable and prevent setting attribute on the group
+        wrapper.alignSetter = function (value) {
+            value = { left: 0, center: 0.5, right: 1 }[value];
+            if (value !== alignFactor) {
+                alignFactor = value;
+                // Bounding box exists, means we're dynamically changing
+                if (bBox) {
+                    wrapper.attr({ x: wrapperX }); // #5134
+                }
+            }
+        };
+
+        // apply these to the box and the text alike
+        wrapper.textSetter = function (value) {
+            if (value !== undefined) {
+                text.textSetter(value);
+            }
+            updateBoxSize();
+            updateTextPadding();
+        };
+
+        // apply these to the box but not to the text
+        wrapper['stroke-widthSetter'] = function (value, key) {
+            if (value) {
+                needsBox = true;
+            }
+            strokeWidth = this['stroke-width'] = value;
+            boxAttr(key, value);
+        };
+        
+        wrapper.strokeSetter =
+        wrapper.fillSetter =
+        wrapper.rSetter = function (value, key) {
+            if (key !== 'r') {
+                if (key === 'fill' && value) {
+                    needsBox = true;
+                }
+                // for animation getter (#6776)
+                wrapper[key] = value;
+            }
+            boxAttr(key, value);
+        };
+        
+        wrapper.anchorXSetter = function (value, key) {
+            anchorX = wrapper.anchorX = value;
+            boxAttr(key, Math.round(value) - getCrispAdjust() - wrapperX);
+        };
+        wrapper.anchorYSetter = function (value, key) {
+            anchorY = wrapper.anchorY = value;
+            boxAttr(key, value - wrapperY);
+        };
+
+        // rename attributes
+        wrapper.xSetter = function (value) {
+            wrapper.x = value; // for animation getter
+            if (alignFactor) {
+                value -= alignFactor * ((width || bBox.width) + 2 * padding);
+
+                // Force animation even when setting to the same value (#7898)
+                wrapper['forceAnimate:x'] = true;
+            }
+            wrapperX = Math.round(value);
+            wrapper.attr('translateX', wrapperX);
+        };
+        wrapper.ySetter = function (value) {
+            wrapperY = wrapper.y = Math.round(value);
+            wrapper.attr('translateY', wrapperY);
+        };
+
+        // Redirect certain methods to either the box or the text
+        var baseCss = wrapper.css;
+        return extend(wrapper, {
+            /**
+             * Pick up some properties and apply them to the text instead of the
+             * wrapper.
+             * @ignore
+             */
+            css: function (styles) {
+                if (styles) {
+                    var textStyles = {};
+                    // Create a copy to avoid altering the original object
+                    // (#537)
+                    styles = merge(styles);
+                    each(wrapper.textProps, function (prop) {
+                        if (styles[prop] !== undefined) {
+                            textStyles[prop] = styles[prop];
+                            delete styles[prop];
+                        }
+                    });
+                    text.css(textStyles);
+
+                    if ('width' in textStyles) {
+                        updateBoxSize();
+                    }
+                }
+                return baseCss.call(wrapper, styles);
+            },
+            /**
+             * Return the bounding box of the box, not the group.
+             * @ignore
+             */
+            getBBox: function () {
+                return {
+                    width: bBox.width + 2 * padding,
+                    height: bBox.height + 2 * padding,
+                    x: bBox.x - padding,
+                    y: bBox.y - padding
+                };
+            },
+            
+            /**
+             * Apply the shadow to the box.
+             * @ignore
+             */
+            shadow: function (b) {
+                if (b) {
+                    updateBoxSize();
+                    if (box) {
+                        box.shadow(b);
+                    }
+                }
+                return wrapper;
+            },
+            
+            /**
+             * Destroy and release memory.
+             * @ignore
+             */
+            destroy: function () {
+
+                // Added by button implementation
+                removeEvent(wrapper.element, 'mouseenter');
+                removeEvent(wrapper.element, 'mouseleave');
+
+                if (text) {
+                    text = text.destroy();
+                }
+                if (box) {
+                    box = box.destroy();
+                }
+                // Call base implementation to destroy the rest
+                SVGElement.prototype.destroy.call(wrapper);
+
+                // Release local pointers (#1298)
+                wrapper =
+                renderer =
+                updateBoxSize =
+                updateTextPadding =
+                boxAttr = null;
+            }
+        });
+    }
+}); // end SVGRenderer
+
+
+// general renderer
+H.Renderer = SVGRenderer;
