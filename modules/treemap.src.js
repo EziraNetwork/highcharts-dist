@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0-modified (2018-06-15)
+ * @license Highcharts JS v6.1.0-modified (2018-06-16)
  *
  * (c) 2014 Highsoft AS
  * Authors: Jon Arild Nygard / Oystein Moseng
@@ -256,7 +256,7 @@
 		 *
 		 * License: www.highcharts.com/license
 		 */
-
+		console.log(H)
 		var seriesType = H.seriesType,
 		    seriesTypes = H.seriesTypes,
 		    map = H.map,

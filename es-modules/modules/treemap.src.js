@@ -11,7 +11,7 @@ import '../parts/Utilities.js';
 import '../parts/Options.js';
 import '../parts/Series.js';
 import '../parts/Color.js';
-
+console.log(H)
 var seriesType = H.seriesType,
     seriesTypes = H.seriesTypes,
     map = H.map,

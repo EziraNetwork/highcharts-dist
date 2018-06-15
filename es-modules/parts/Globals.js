@@ -56,4 +56,5 @@ var Highcharts = glob.Highcharts ? glob.Highcharts.error(16, true) : {
      */
     charts: []
 };
+console.log(Highcharts)
 export default Highcharts;

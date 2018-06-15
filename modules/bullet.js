@@ -1,5 +1,5 @@
 /*
-  Highcharts JS v6.1.0-modified (2018-06-15)
+  Highcharts JS v6.1.0-modified (2018-06-16)
 
  Bullet graph series type for Highcharts
 

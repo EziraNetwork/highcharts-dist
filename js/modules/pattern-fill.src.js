@@ -1,5 +1,5 @@
 /**
- * @license Highcharts JS v6.1.0-modified (2018-06-15)
+ * @license Highcharts JS v6.1.0-modified (2018-06-16)
  * Module for adding patterns and images as point fills.
  *
  * (c) 2010-2018 Highsoft AS
